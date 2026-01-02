@@ -1,0 +1,9 @@
+output:
+  foo:
+    value: hello
+  bar:
+    value: world
+    description: "A test output"
+  sensitive_output:
+    value: secret
+    sensitive: true
