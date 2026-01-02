@@ -57,7 +57,8 @@ func NewParser(fs afero.Fs) *Parser {
 // a more context-sensitive error instead.
 //
 // The file will be parsed using the HCL native syntax unless the filename
-// ends with ".json", in which case the HCL JSON syntax will be used.
+// ends with ".json", in which case the HCL JSON syntax will be used, or
+// ends with ".yaml" or ".yml", in which case the YAML syntax will be used.
 func (p *Parser) LoadHCLFile(path string) (hcl.Body, hcl.Diagnostics) {
 	src, err := p.fs.ReadFile(path)
 
@@ -76,6 +77,8 @@ func (p *Parser) LoadHCLFile(path string) (hcl.Body, hcl.Diagnostics) {
 	switch {
 	case strings.HasSuffix(path, ".json"):
 		file, diags = p.p.ParseJSON(src, path)
+	case isYAMLFile(path):
+		file, diags = p.parseYAML(src, path)
 	default:
 		file, diags = p.p.ParseHCL(src, path)
 	}

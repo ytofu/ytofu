@@ -26,10 +26,18 @@ const (
 	tofuExt         = ".tofu"
 	tfJSONExt       = ".tf.json"
 	tofuJSONExt     = ".tofu.json"
+	tfYAMLExt       = ".tf.yaml"
+	tofuYAMLExt     = ".tofu.yaml"
+	tfYMLExt        = ".tf.yml"
+	tofuYMLExt      = ".tofu.yml"
 	tfTestExt       = ".tftest.hcl"
 	tofuTestExt     = ".tofutest.hcl"
 	tfTestJSONExt   = ".tftest.json"
 	tofuTestJSONExt = ".tofutest.json"
+	tfTestYAMLExt   = ".tftest.yaml"
+	tofuTestYAMLExt = ".tofutest.yaml"
+	tfTestYMLExt    = ".tftest.yml"
+	tofuTestYMLExt  = ".tofutest.yml"
 )
 
 // LoadConfigDir reads the .tf and .tf.json files in the given directory
@@ -349,10 +357,18 @@ func tfFileExt(path string) string {
 		return tfExt
 	case strings.HasSuffix(path, tfJSONExt):
 		return tfJSONExt
+	case strings.HasSuffix(path, tfYAMLExt):
+		return tfYAMLExt
+	case strings.HasSuffix(path, tfYMLExt):
+		return tfYMLExt
 	case strings.HasSuffix(path, tfTestExt):
 		return tfTestExt
 	case strings.HasSuffix(path, tfTestJSONExt):
 		return tfTestJSONExt
+	case strings.HasSuffix(path, tfTestYAMLExt):
+		return tfTestYAMLExt
+	case strings.HasSuffix(path, tfTestYMLExt):
+		return tfTestYMLExt
 	default:
 		return ""
 	}
@@ -366,17 +382,30 @@ func tofuFileExt(path string) string {
 		return tofuExt
 	case strings.HasSuffix(path, tofuJSONExt):
 		return tofuJSONExt
+	case strings.HasSuffix(path, tofuYAMLExt):
+		return tofuYAMLExt
+	case strings.HasSuffix(path, tofuYMLExt):
+		return tofuYMLExt
 	case strings.HasSuffix(path, tofuTestExt):
 		return tofuTestExt
 	case strings.HasSuffix(path, tofuTestJSONExt):
 		return tofuTestJSONExt
+	case strings.HasSuffix(path, tofuTestYAMLExt):
+		return tofuTestYAMLExt
+	case strings.HasSuffix(path, tofuTestYMLExt):
+		return tofuTestYMLExt
 	}
 
 	return ""
 }
 
 func isTestFileExt(ext string) bool {
-	return ext == tfTestExt || ext == tfTestJSONExt || ext == tofuTestExt || ext == tofuTestJSONExt
+	switch ext {
+	case tfTestExt, tfTestJSONExt, tfTestYAMLExt, tfTestYMLExt,
+		tofuTestExt, tofuTestJSONExt, tofuTestYAMLExt, tofuTestYMLExt:
+		return true
+	}
+	return false
 }
 
 // IsIgnoredFile returns true if the given filename (which must not have a
