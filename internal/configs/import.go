@@ -11,6 +11,7 @@ import (
 	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/opentofu/opentofu/internal/addrs"
 	"github.com/opentofu/opentofu/internal/configs/hcl2shim"
+	"github.com/opentofu/opentofu/internal/configs/yamlbody"
 	"github.com/opentofu/opentofu/internal/tfdiags"
 )
 
@@ -70,11 +71,12 @@ func decodeImportBlock(block *hcl.Block) (*Import, hcl.Diagnostics) {
 	if attr, exists := content.Attributes["to"]; exists {
 		toExpr := attr.Expr
 		// Since we are manually parsing the 'to' argument, we need to specially
-		// handle json configs, in which case the values will be json strings
+		// handle json and yaml configs, in which case the values will be strings
 		// rather than hcl
 		isJSON := hcljson.IsJSONExpression(attr.Expr)
+		isYAML := yamlbody.IsYAMLExpression(attr.Expr)
 
-		if isJSON {
+		if isJSON || isYAML {
 			convertedExpr, convertDiags := hcl2shim.ConvertJSONExpressionToHCL(toExpr)
 			diags = append(diags, convertDiags...)
 

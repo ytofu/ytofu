@@ -16,6 +16,7 @@ import (
 
 	"github.com/opentofu/opentofu/internal/addrs"
 	"github.com/opentofu/opentofu/internal/configs/hcl2shim"
+	"github.com/opentofu/opentofu/internal/configs/yamlbody"
 	"github.com/opentofu/opentofu/internal/lang"
 	"github.com/opentofu/opentofu/internal/tfdiags"
 )
@@ -780,15 +781,16 @@ func decodeEphemeralBlock(block *hcl.Block, override bool) (*Resource, hcl.Diagn
 // a single resource, and the only extra variables are count.index or each.key.
 func decodeReplaceTriggeredBy(expr hcl.Expression) ([]hcl.Expression, hcl.Diagnostics) {
 	// Since we are manually parsing the replace_triggered_by argument, we
-	// need to specially handle json configs, in which case the values will
-	// be json strings rather than hcl. To simplify parsing however we will
+	// need to specially handle json and yaml configs, in which case the values
+	// will be strings rather than hcl. To simplify parsing however we will
 	// decode the individual list elements, rather than the entire expression.
 	isJSON := hcljson.IsJSONExpression(expr)
+	isYAML := yamlbody.IsYAMLExpression(expr)
 
 	exprs, diags := hcl.ExprList(expr)
 
 	for i, expr := range exprs {
-		if isJSON {
+		if isJSON || isYAML {
 			var convertDiags hcl.Diagnostics
 			expr, convertDiags = hcl2shim.ConvertJSONExpressionToHCL(expr)
 			diags = diags.Extend(convertDiags)

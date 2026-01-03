@@ -1,0 +1,9 @@
+# Test YAML error position accuracy in nested blocks
+resource:
+  null_resource:
+    example:
+      triggers:
+        name: "test"
+      lifecycle:
+        create_before_destroy: true
+        invalid_attr: "error"  # ERROR: Extraneous YAML property
