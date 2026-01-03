@@ -1,0 +1,82 @@
+# GoReleaser config for ytofu YAML releases
+# Simplified config: GitHub releases only, no Docker/signing/packages
+
+project_name: tofu
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+    - make protobuf
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+
+    main: ./cmd/tofu
+
+    flags:
+      - "-mod=readonly"
+      - "-trimpath"
+
+    ldflags:
+      - "-s -w"
+      - "-X 'github.com/opentofu/opentofu/version.dev=no'"
+
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+      - openbsd
+      - solaris
+
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+
+    ignore:
+      - goos: freebsd
+        goarch: arm64
+      - goos: openbsd
+        goarch: arm
+      - goos: openbsd
+        goarch: arm64
+      - goos: solaris
+        goarch: "386"
+      - goos: solaris
+        goarch: arm
+      - goos: solaris
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+
+archives:
+  - format: tar.gz
+    id: targz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{- .Os }}_{{- .Arch }}"
+
+  - format: zip
+    id: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{- .Os }}_{{- .Arch }}"
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+
+snapshot:
+  name_template: "{{ .Version }}-next"
+
+changelog:
+  use: github-native
+
+release:
+  prerelease: auto
+  draft: true
