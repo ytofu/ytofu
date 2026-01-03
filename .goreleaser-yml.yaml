@@ -27,37 +27,10 @@ builds:
       - linux
       - windows
       - darwin
-      - freebsd
-      - openbsd
-      - solaris
 
     goarch:
-      - "386"
       - amd64
-      - arm
-      - arm64
-
-    ignore:
-      - goos: freebsd
-        goarch: arm64
-      - goos: openbsd
-        goarch: arm
-      - goos: openbsd
-        goarch: arm64
-      - goos: solaris
-        goarch: "386"
-      - goos: solaris
-        goarch: arm
-      - goos: solaris
-        goarch: arm64
-      - goos: windows
-        goarch: arm
-      - goos: windows
-        goarch: arm64
-      - goos: darwin
-        goarch: "386"
-      - goos: darwin
-        goarch: arm
+      # - arm64  # TODO: enable arm64 later
 
 archives:
   - format: tar.gz
