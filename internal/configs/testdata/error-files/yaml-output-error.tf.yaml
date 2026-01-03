@@ -1,0 +1,6 @@
+# Test YAML error position accuracy in output blocks
+output:
+  my_output:
+    value: "hello"
+    description: "A test output"
+    invalid_output_attr: "error"  # ERROR: Extraneous YAML property

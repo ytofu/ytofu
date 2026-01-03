@@ -4,25 +4,24 @@
 package configs
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/opentofu/opentofu/internal/configs/yamlbody"
 	"gopkg.in/yaml.v3"
 )
 
-// parseYAML converts YAML source to an hcl.File by:
-// 1. Parsing YAML into a generic structure
-// 2. Converting to JSON bytes
-// 3. Using HCL's JSON parser to produce an hcl.Body
+// parseYAML parses YAML source into an hcl.File with accurate source positions
+// and full comment preservation.
 //
-// This approach reuses the well-tested HCL JSON parser infrastructure
-// and provides full compatibility with all OpenTofu block types.
+// This implementation uses yaml.Node to preserve:
+// - Exact line/column positions for error reporting
+// - All comment types (head, line, foot) for tooling support
 func (p *Parser) parseYAML(src []byte, filename string) (*hcl.File, hcl.Diagnostics) {
-	// Parse YAML into generic interface{}
-	var data interface{}
-	if err := yaml.Unmarshal(src, &data); err != nil {
+	// Parse YAML into a yaml.Node tree to preserve positions and comments
+	var root yaml.Node
+	if err := yaml.Unmarshal(src, &root); err != nil {
 		return nil, hcl.Diagnostics{
 			{
 				Severity: hcl.DiagError,
@@ -32,32 +31,21 @@ func (p *Parser) parseYAML(src []byte, filename string) (*hcl.File, hcl.Diagnost
 		}
 	}
 
-	// Handle empty YAML files
-	if data == nil {
-		data = make(map[string]interface{})
-	}
-
-	// Convert to JSON bytes
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, hcl.Diagnostics{
-			{
-				Severity: hcl.DiagError,
-				Summary:  "Failed to convert YAML to JSON",
-				Detail:   fmt.Sprintf("Internal error converting YAML to JSON: %s", err),
-			},
+	// Handle empty YAML files - create an empty mapping node
+	if root.Kind == 0 || (root.Kind == yaml.DocumentNode && len(root.Content) == 0) {
+		root = yaml.Node{
+			Kind:    yaml.DocumentNode,
+			Content: []*yaml.Node{{Kind: yaml.MappingNode}},
 		}
 	}
 
-	// Use HCL's JSON parser
-	file, diags := p.p.ParseJSON(jsonBytes, filename)
-
-	// Store original YAML source for error snippets
-	if file != nil {
-		file.Bytes = src
+	// Create an hcl.File with our YAML body implementation
+	file := &hcl.File{
+		Body:  yamlbody.NewBody(&root, filename, src),
+		Bytes: src,
 	}
 
-	return file, diags
+	return file, nil
 }
 
 // isYAMLFile returns true if the given path has a YAML extension.
