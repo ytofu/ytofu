@@ -1,0 +1,6 @@
+# Test YAML error position accuracy for unknown attributes
+variable:
+  my_var:
+    type: string
+    default: "hello"
+    unknown_field: "error"  # ERROR: Extraneous YAML property
