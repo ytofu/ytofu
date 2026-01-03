@@ -406,3 +406,85 @@ output:
 		}
 	}
 }
+
+func TestYAMLSourcesAvailableForDiagnostics(t *testing.T) {
+	// Test that YAML files are registered in the parser's Sources() map
+	// so that source code is available for diagnostic snippets.
+	// This fixes the "(source code not available)" issue in error messages.
+	src := `resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+`
+	parser := testParser(map[string]string{
+		"main.tf.yaml": src,
+	})
+
+	_, diags := parser.LoadHCLFile("main.tf.yaml")
+	if diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", diags)
+	}
+
+	// Verify the YAML file is in Sources()
+	sources := parser.Sources()
+	file, ok := sources["main.tf.yaml"]
+	if !ok {
+		t.Fatal("YAML file not found in parser.Sources() - diagnostics will show '(source code not available)'")
+	}
+
+	// Verify the source bytes are available
+	if file.Bytes == nil {
+		t.Error("YAML file has nil Bytes - source code will not be available for diagnostics")
+	}
+
+	// Verify the source content matches what we loaded
+	if string(file.Bytes) != src {
+		t.Errorf("source bytes mismatch:\ngot:  %q\nwant: %q", string(file.Bytes), src)
+	}
+}
+
+func TestYAMLSourcesAvailableForMultipleFiles(t *testing.T) {
+	// Test that multiple YAML files are all registered in Sources()
+	files := map[string]string{
+		"main.tf.yaml": `resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+`,
+		"variables.tf.yaml": `variable:
+  region:
+    default: us-east-1
+`,
+		"outputs.tf.yaml": `output:
+  ip:
+    value: "1.2.3.4"
+`,
+	}
+
+	parser := testParser(files)
+
+	// Load all files
+	for filename := range files {
+		_, diags := parser.LoadHCLFile(filename)
+		if diags.HasErrors() {
+			t.Fatalf("unexpected errors loading %s: %v", filename, diags)
+		}
+	}
+
+	// Verify all YAML files are in Sources()
+	sources := parser.Sources()
+	for filename, expectedSrc := range files {
+		file, ok := sources[filename]
+		if !ok {
+			t.Errorf("YAML file %q not found in parser.Sources()", filename)
+			continue
+		}
+		if file.Bytes == nil {
+			t.Errorf("YAML file %q has nil Bytes", filename)
+			continue
+		}
+		if string(file.Bytes) != expectedSrc {
+			t.Errorf("source bytes mismatch for %q:\ngot:  %q\nwant: %q", filename, string(file.Bytes), expectedSrc)
+		}
+	}
+}

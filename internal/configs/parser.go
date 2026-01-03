@@ -79,6 +79,11 @@ func (p *Parser) LoadHCLFile(path string) (hcl.Body, hcl.Diagnostics) {
 		file, diags = p.p.ParseJSON(src, path)
 	case isYAMLFile(path):
 		file, diags = p.parseYAML(src, path)
+		// Register YAML files with the parser cache so source code
+		// is available for diagnostic snippets
+		if file != nil {
+			p.p.AddFile(path, file)
+		}
 	default:
 		file, diags = p.p.ParseHCL(src, path)
 	}
