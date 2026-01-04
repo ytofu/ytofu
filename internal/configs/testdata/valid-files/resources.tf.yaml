@@ -1,10 +1,9 @@
+# Resources without count/for_each (Configuration as Data)
 resource:
   test_object:
     a:
-      count: 1
       test_string: new
     b:
-      count: 1
+      test_string: old
       lifecycle:
-        replace_triggered_by:
-          - "test_object.a[count.index].test_string"
+        create_before_destroy: true

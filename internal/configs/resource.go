@@ -165,6 +165,10 @@ func decodeResourceBlock(block *hcl.Block, override bool) (*Resource, hcl.Diagno
 		repetitionArgs++
 	}
 
+	// Check YAML restrictions for count and for_each
+	yamlDiags := ValidateYAMLNoCountOrForEach(block.Body, r.Count, r.ForEach, countRng, forEachRng)
+	diags = append(diags, yamlDiags...)
+
 	if attr, exists := content.Attributes["provider"]; exists {
 		var providerDiags hcl.Diagnostics
 		r.ProviderConfigRef, providerDiags = decodeProviderConfigRef(attr.Expr, "provider")
@@ -462,6 +466,10 @@ func decodeDataBlock(block *hcl.Block, override, nested bool) (*Resource, hcl.Di
 		})
 	}
 
+	// Check YAML restrictions for count and for_each (data blocks)
+	yamlDiags := ValidateYAMLNoCountOrForEach(block.Body, r.Count, r.ForEach, countRng, forEachRng)
+	diags = append(diags, yamlDiags...)
+
 	if attr, exists := content.Attributes["provider"]; exists {
 		var providerDiags hcl.Diagnostics
 		r.ProviderConfigRef, providerDiags = decodeProviderConfigRef(attr.Expr, "provider")
@@ -636,6 +644,10 @@ func decodeEphemeralBlock(block *hcl.Block, override bool) (*Resource, hcl.Diagn
 		forEachRng = attr.NameRange
 		repetitionArgs++
 	}
+
+	// Check YAML restrictions for count and for_each (ephemeral resources)
+	yamlEphemeralDiags := ValidateYAMLNoCountOrForEach(block.Body, r.Count, r.ForEach, countRng, forEachRng)
+	diags = append(diags, yamlEphemeralDiags...)
 
 	if attr, exists := content.Attributes["provider"]; exists {
 		var providerDiags hcl.Diagnostics

@@ -43,7 +43,7 @@ variable:
     default: bar
     type: string
 `,
-			wantErr: false,
+			wantErr: true, // Variables not supported in YAML (Configuration as Data)
 		},
 		{
 			name: "locals block",
@@ -52,7 +52,7 @@ locals:
   foo: bar
   count: 5
 `,
-			wantErr: false,
+			wantErr: true, // Locals not supported in YAML (Configuration as Data)
 		},
 		{
 			name: "output block",
@@ -130,12 +130,12 @@ func TestIsYAMLFile(t *testing.T) {
 }
 
 func TestYAMLResourceParsing(t *testing.T) {
+	// Note: count is not supported in YAML (Configuration as Data)
 	src := `
 resource:
   test_instance:
     example:
       name: test
-      count: 2
 `
 	parser := testParser(map[string]string{
 		"main.tf.yaml": src,
@@ -160,6 +160,7 @@ resource:
 }
 
 func TestYAMLVariableParsing(t *testing.T) {
+	// Variables are not supported in YAML (Configuration as Data)
 	src := `
 variable:
   instance_count:
@@ -171,21 +172,21 @@ variable:
 		"main.tf.yaml": src,
 	})
 
-	file, diags := parser.LoadConfigFile("main.tf.yaml")
-	if diags.HasErrors() {
-		t.Fatalf("unexpected errors: %v", diags)
+	_, diags := parser.LoadConfigFile("main.tf.yaml")
+	if !diags.HasErrors() {
+		t.Fatal("expected error for variable block in YAML")
 	}
 
-	if len(file.Variables) != 1 {
-		t.Errorf("expected 1 variable, got %d", len(file.Variables))
+	// Verify error message
+	found := false
+	for _, diag := range diags {
+		if diag.Summary == "Variables not supported in YAML" {
+			found = true
+			break
+		}
 	}
-
-	v := file.Variables[0]
-	if v.Name != "instance_count" {
-		t.Errorf("expected variable name 'instance_count', got %q", v.Name)
-	}
-	if v.Description != "Number of instances to create" {
-		t.Errorf("expected description 'Number of instances to create', got %q", v.Description)
+	if !found {
+		t.Errorf("expected 'Variables not supported in YAML' error, got: %v", diags)
 	}
 }
 
@@ -223,6 +224,7 @@ output:
 }
 
 func TestYAMLLocalsParsing(t *testing.T) {
+	// Locals are not supported in YAML (Configuration as Data)
 	src := `
 locals:
   foo: bar
@@ -233,13 +235,21 @@ locals:
 		"main.tf.yaml": src,
 	})
 
-	file, diags := parser.LoadConfigFile("main.tf.yaml")
-	if diags.HasErrors() {
-		t.Fatalf("unexpected errors: %v", diags)
+	_, diags := parser.LoadConfigFile("main.tf.yaml")
+	if !diags.HasErrors() {
+		t.Fatal("expected error for locals block in YAML")
 	}
 
-	if len(file.Locals) != 3 {
-		t.Errorf("expected 3 locals, got %d", len(file.Locals))
+	// Verify error message
+	found := false
+	for _, diag := range diags {
+		if diag.Summary == "Locals not supported in YAML" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'Locals not supported in YAML' error, got: %v", diags)
 	}
 }
 

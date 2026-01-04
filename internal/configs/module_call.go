@@ -96,6 +96,10 @@ func decodeModuleBlock(block *hcl.Block, override bool) (*ModuleCall, hcl.Diagno
 		repetitionArgs++
 	}
 
+	// Check YAML restrictions for count and for_each (modules)
+	yamlDiags := ValidateYAMLNoCountOrForEach(block.Body, mc.Count, mc.ForEach, countRng, forEachRng)
+	diags = append(diags, yamlDiags...)
+
 	if attr, exists := content.Attributes["depends_on"]; exists {
 		deps, depsDiags := decodeDependsOn(attr)
 		diags = append(diags, depsDiags...)

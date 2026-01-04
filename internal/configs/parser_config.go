@@ -144,6 +144,11 @@ func (p *Parser) loadConfigFile(path string, override bool) (*File, hcl.Diagnost
 			}
 
 		case "variable":
+			// Check YAML restriction - variables not allowed in YAML files
+			if diag := ValidateYAMLBlockType(block, body); diag != nil {
+				diags = append(diags, diag)
+				continue
+			}
 			cfg, cfgDiags := decodeVariableBlock(block, override)
 			diags = append(diags, cfgDiags...)
 			if cfg != nil {
@@ -151,6 +156,11 @@ func (p *Parser) loadConfigFile(path string, override bool) (*File, hcl.Diagnost
 			}
 
 		case "locals":
+			// Check YAML restriction - locals not allowed in YAML files
+			if diag := ValidateYAMLBlockType(block, body); diag != nil {
+				diags = append(diags, diag)
+				continue
+			}
 			defs, defsDiags := decodeLocalsBlock(block)
 			diags = append(diags, defsDiags...)
 			file.Locals = append(file.Locals, defs...)

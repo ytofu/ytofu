@@ -109,6 +109,14 @@ func (e *expression) evalStringTemplate(value string, ctx *hcl.EvalContext) (cty
 		return cty.DynamicVal, diags
 	}
 
+	// Validate that the template doesn't contain restricted constructs
+	// (functions, for expressions, conditionals) - Configuration as Data
+	restrictionDiags := ValidateTemplateExpression(expr)
+	diags = append(diags, restrictionDiags...)
+	if restrictionDiags.HasErrors() {
+		return cty.DynamicVal, diags
+	}
+
 	val, evalDiags := expr.Value(ctx)
 	diags = append(diags, evalDiags...)
 	return val, diags

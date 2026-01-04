@@ -1,12 +1,12 @@
 # Test YAML error position accuracy with multiple errors
 # This verifies each error points to its correct line
 
-variable:
-  first_var:
-    type: string
-    bad_var_attr: "error1"  # ERROR: Extraneous YAML property
-
 output:
   first_output:
-    value: "test"
-    bad_output_attr: "error2"  # ERROR: Extraneous YAML property
+    value: "test1"
+    bad_output_attr1: "error1"  # ERROR: Extraneous YAML property
+
+output:
+  second_output:
+    value: "test2"
+    bad_output_attr2: "error2"  # ERROR: Extraneous YAML property
