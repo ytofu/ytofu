@@ -1,0 +1,12 @@
+resource:
+  test_object:
+    a:
+      count: 1
+      test_string: new
+variable:
+  foo: {}
+  bar:
+    default: hello
+output:
+  result:
+    value: hello
