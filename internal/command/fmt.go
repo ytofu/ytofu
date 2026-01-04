@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/mitchellh/cli"
+	"gopkg.in/yaml.v3"
 
 	"github.com/opentofu/opentofu/internal/configs"
 	"github.com/opentofu/opentofu/internal/tfdiags"
@@ -29,15 +30,23 @@ const (
 	stdinArg = "-"
 )
 
-var (
-	fmtSupportedExts = []string{
-		".tf",
-		".tofu",
-		".tfvars",
-		".tftest.hcl",
-		".tofutest.hcl",
-	}
-)
+var fmtSupportedExts = []string{
+	".tf",
+	".tofu",
+	".tfvars",
+	".tftest.hcl",
+	".tofutest.hcl",
+	// YAML config files
+	".tf.yaml",
+	".tf.yml",
+	".tofu.yaml",
+	".tofu.yml",
+	// YAML test files
+	".tftest.yaml",
+	".tftest.yml",
+	".tofutest.yaml",
+	".tofutest.yml",
+}
 
 // FmtCommand is a Command implementation that rewrites OpenTofu config
 // files to a canonical format and style.
@@ -165,7 +174,7 @@ func (c *FmtCommand) fmt(paths []string, stdin io.Reader, stdout io.Writer) tfdi
 			}
 
 			if !fmtd {
-				diags = diags.Append(fmt.Errorf("Only .tf, .tfvars, and .tftest.hcl files can be processed with tofu fmt"))
+				diags = diags.Append(fmt.Errorf("Only .tf, .tofu, .tfvars, .tftest.hcl, and YAML configuration files can be processed with tofu fmt"))
 				continue
 			}
 		}
@@ -189,13 +198,27 @@ func (c *FmtCommand) processFile(path string, r io.Reader, w io.Writer, isStdout
 	// diagnostic errors can include the source code snippet
 	c.registerSynthConfigSource(path, src)
 
-	// File must be parseable as HCL native syntax before we'll try to format
-	// it. If not, the formatter is likely to make drastic changes that would
+	// File must be parseable before we'll try to format it.
+	// If not, the formatter is likely to make drastic changes that would
 	// be hard for the user to undo.
-	_, syntaxDiags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
-	if syntaxDiags.HasErrors() {
-		diags = diags.Append(syntaxDiags)
-		return diags
+	if isYAMLFile(path) {
+		// Validate YAML syntax
+		var node yaml.Node
+		if err := yaml.Unmarshal(src, &node); err != nil {
+			diags = diags.Append(&hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Invalid YAML syntax",
+				Detail:   fmt.Sprintf("The file %q contains invalid YAML: %s", path, err),
+			})
+			return diags
+		}
+	} else {
+		// Validate HCL syntax
+		_, syntaxDiags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+		if syntaxDiags.HasErrors() {
+			diags = diags.Append(syntaxDiags)
+			return diags
+		}
 	}
 
 	result := c.formatSourceCode(src, path)
@@ -296,6 +319,12 @@ func (c *FmtCommand) processDir(path string, stdout io.Writer) tfdiags.Diagnosti
 // formatSourceCode is the formatting logic itself, applied to each file that
 // is selected (directly or indirectly) on the command line.
 func (c *FmtCommand) formatSourceCode(src []byte, filename string) []byte {
+	// Handle YAML files with the YAML formatter
+	if isYAMLFile(filename) {
+		return c.formatYAMLSourceCode(src, filename)
+	}
+
+	// Handle HCL files
 	f, diags := hclwrite.ParseConfig(src, filename, hcl.InitialPos)
 	if diags.HasErrors() {
 		// It would be weird to get here because the caller should already have
@@ -553,14 +582,41 @@ func (c *FmtCommand) trimNewlines(tokens hclwrite.Tokens) hclwrite.Tokens {
 	return tokens[start:end]
 }
 
+// isYAMLFile returns true if the given path has a YAML extension.
+func isYAMLFile(path string) bool {
+	return strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml")
+}
+
+// formatYAMLSourceCode formats YAML source with consistent indentation.
+// Unlike HCL fmt which can reformat expressions, YAML formatting only
+// normalizes indentation to 2 spaces. Block order is preserved.
+func (c *FmtCommand) formatYAMLSourceCode(src []byte, filename string) []byte {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(src, &doc); err != nil {
+		return src
+	}
+
+	// Encode with canonical formatting (2-space indentation)
+	var buf bytes.Buffer
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&doc); err != nil {
+		return src
+	}
+	encoder.Close()
+	return buf.Bytes()
+}
+
 func (c *FmtCommand) Help() string {
 	helpText := `
 Usage: tofu [global options] fmt [options] [target...]
 
   Rewrites all OpenTofu configuration files to a canonical format. All
-  configuration files (.tf), variables files (.tfvars), and testing files 
-  (.tftest.hcl) are updated. JSON files (.tf.json, .tfvars.json, or 
-  .tftest.json) are not modified.
+  configuration files (.tf, .tf.yaml), variables files (.tfvars), and testing
+  files (.tftest.hcl, .tftest.yaml) are updated. JSON files (.tf.json,
+  .tfvars.json, or .tftest.json) are not modified.
+
+  YAML files are formatted with consistent 2-space indentation.
 
   By default, fmt scans the current directory for configuration files. If you
   provide a directory for the target argument, then fmt will scan that
@@ -568,8 +624,8 @@ Usage: tofu [global options] fmt [options] [target...]
   file. If you provide a single dash ("-"), then fmt will read from standard
   input (STDIN).
 
-  The content must be in the OpenTofu language native syntax; JSON is not
-  supported.
+  The content must be in the OpenTofu language native syntax or YAML; JSON is
+  not supported.
 
 Options:
 

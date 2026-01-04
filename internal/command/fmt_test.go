@@ -146,6 +146,103 @@ func TestFmt(t *testing.T) {
 	}
 }
 
+func TestFmt_YAML(t *testing.T) {
+	const inSuffix = "_in.tf.yaml"
+	const outSuffix = "_out.tf.yaml"
+	const gotSuffix = "_got.tf.yaml"
+	entries, err := os.ReadDir("testdata/fmt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, info := range entries {
+		if info.IsDir() {
+			continue
+		}
+		filename := info.Name()
+		if !strings.HasSuffix(filename, inSuffix) {
+			continue
+		}
+		testName := filename[:len(filename)-len(inSuffix)]
+		t.Run(testName, func(t *testing.T) {
+			inFile := filepath.Join("testdata", "fmt", testName+inSuffix)
+			wantFile := filepath.Join("testdata", "fmt", testName+outSuffix)
+			gotFile := filepath.Join(tmpDir, testName+gotSuffix)
+			input, err := os.ReadFile(inFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := os.ReadFile(wantFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = os.WriteFile(gotFile, input, 0700)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ui := cli.NewMockUi()
+			c := &FmtCommand{
+				Meta: Meta{
+					testingOverrides: metaOverridesForProvider(testProvider()),
+					Ui:               ui,
+				},
+			}
+			args := []string{gotFile}
+			if code := c.Run(args); code != 0 {
+				t.Fatalf("fmt command was unsuccessful:\n%s", ui.ErrorWriter.String())
+			}
+
+			got, err := os.ReadFile(gotFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if diff := cmp.Diff(string(want), string(got)); diff != "" {
+				t.Errorf("wrong result\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestFmt_YAML_syntaxError(t *testing.T) {
+	tempDir := testTempDirRealpath(t)
+
+	invalidSrc := `
+resource:
+  test:
+    - invalid: [unclosed
+`
+
+	err := os.WriteFile(filepath.Join(tempDir, "invalid.tf.yaml"), []byte(invalidSrc), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ui := new(cli.MockUi)
+	c := &FmtCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(testProvider()),
+			Ui:               ui,
+		},
+	}
+
+	args := []string{tempDir}
+	if code := c.Run(args); code != 2 {
+		t.Fatalf("wrong exit code. expected 2, got %d. errors: \n%s", code, ui.ErrorWriter.String())
+	}
+
+	expected := "Invalid YAML syntax"
+	if actual := ui.ErrorWriter.String(); !strings.Contains(actual, expected) {
+		t.Fatalf("expected:\n%s\n\nto include: %q", actual, expected)
+	}
+}
+
 func TestFmt_nonexist(t *testing.T) {
 	tempDir := fmtFixtureWriteDir(t)
 
