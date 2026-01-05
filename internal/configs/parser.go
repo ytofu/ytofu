@@ -78,10 +78,14 @@ func (p *Parser) LoadHCLFile(path string) (hcl.Body, hcl.Diagnostics) {
 	case strings.HasSuffix(path, ".json"):
 		file, diags = p.p.ParseJSON(src, path)
 	case isYAMLFile(path):
-		file, diags = p.parseYAML(src, path)
-		// Register YAML files with the parser cache so source code
-		// is available for diagnostic snippets
-		if file != nil {
+		// parseYAML returns multiple files for multi-doc YAML
+		// LoadHCLFile returns only the first file for backwards compatibility
+		files, yamlDiags := p.parseYAML(src, path)
+		diags = yamlDiags
+		if len(files) > 0 {
+			file = files[0]
+			// Register YAML files with the parser cache so source code
+			// is available for diagnostic snippets
 			p.p.AddFile(path, file)
 		}
 	default:
@@ -95,6 +99,34 @@ func (p *Parser) LoadHCLFile(path string) (hcl.Body, hcl.Diagnostics) {
 	}
 
 	return file.Body, diags
+}
+
+// loadYAMLMultiDoc reads a YAML file and returns all documents as hcl.File objects.
+// Multi-document YAML files (separated by ---) produce multiple files.
+// Each file is registered in the parser cache for diagnostic snippets.
+func (p *Parser) loadYAMLMultiDoc(path string) ([]*hcl.File, hcl.Diagnostics) {
+	src, err := p.fs.ReadFile(path)
+	if err != nil {
+		return nil, hcl.Diagnostics{
+			{
+				Severity: hcl.DiagError,
+				Summary:  "Failed to read file",
+				Detail:   fmt.Sprintf("The file %q could not be read.", path),
+			},
+		}
+	}
+
+	files, diags := p.parseYAML(src, path)
+
+	// Register all YAML files with the parser cache so source code
+	// is available for diagnostic snippets
+	for _, file := range files {
+		if file != nil {
+			p.p.AddFile(path, file)
+		}
+	}
+
+	return files, diags
 }
 
 // Sources returns a map of the cached source buffers for all files that

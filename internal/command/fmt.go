@@ -590,18 +590,37 @@ func isYAMLFile(path string) bool {
 // formatYAMLSourceCode formats YAML source with consistent indentation.
 // Unlike HCL fmt which can reformat expressions, YAML formatting only
 // normalizes indentation to 2 spaces. Block order is preserved.
+// Multi-document YAML files (separated by ---) are supported.
 func (c *FmtCommand) formatYAMLSourceCode(src []byte, filename string) []byte {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
+	// Parse all documents using yaml.Decoder for multi-doc support
+	decoder := yaml.NewDecoder(bytes.NewReader(src))
+	var docs []*yaml.Node
+
+	for {
+		var doc yaml.Node
+		err := decoder.Decode(&doc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return src // Return unchanged on parse error
+		}
+		docs = append(docs, &doc)
+	}
+
+	if len(docs) == 0 {
 		return src
 	}
 
-	// Encode with canonical formatting (2-space indentation)
+	// Encode all documents with canonical formatting (2-space indentation)
 	var buf bytes.Buffer
 	encoder := yaml.NewEncoder(&buf)
 	encoder.SetIndent(2)
-	if err := encoder.Encode(&doc); err != nil {
-		return src
+
+	for _, doc := range docs {
+		if err := encoder.Encode(doc); err != nil {
+			return src
+		}
 	}
 	encoder.Close()
 	return buf.Bytes()

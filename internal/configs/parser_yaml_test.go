@@ -498,3 +498,359 @@ func TestYAMLSourcesAvailableForMultipleFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestYAMLMultiDocument(t *testing.T) {
+	tests := []struct {
+		name          string
+		src           string
+		wantResources int
+		wantErr       bool
+		errContains   string
+	}{
+		{
+			name: "two documents with different resources",
+			src: `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+resource:
+  aws_instance:
+    api:
+      ami: ami-67890
+`,
+			wantResources: 2,
+			wantErr:       false,
+		},
+		{
+			name: "three documents",
+			src: `---
+resource:
+  aws_instance:
+    one:
+      ami: ami-1
+---
+resource:
+  aws_instance:
+    two:
+      ami: ami-2
+---
+resource:
+  aws_instance:
+    three:
+      ami: ami-3
+`,
+			wantResources: 3,
+			wantErr:       false,
+		},
+		{
+			name: "empty document in middle",
+			src: `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+---
+resource:
+  aws_instance:
+    api:
+      ami: ami-67890
+`,
+			wantResources: 2,
+			wantErr:       false,
+		},
+		{
+			name: "duplicate resource across documents",
+			src: `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+resource:
+  aws_instance:
+    web:
+      ami: ami-67890
+`,
+			wantErr:     true,
+			errContains: "Duplicate resource",
+		},
+		{
+			name: "variable in multi-doc should error",
+			src: `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+variable:
+  region:
+    default: us-east-1
+`,
+			wantErr:     true,
+			errContains: "Variables not supported in YAML",
+		},
+		{
+			name: "single document without separator",
+			src: `resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+`,
+			wantResources: 1,
+			wantErr:       false,
+		},
+		{
+			name: "document with explicit start only",
+			src: `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+`,
+			wantResources: 1,
+			wantErr:       false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			parser := testParser(map[string]string{
+				"main.tf.yaml": tc.src,
+			})
+
+			mod, diags := parser.LoadConfigDir(".", StaticModuleCall{})
+
+			if tc.wantErr {
+				if !diags.HasErrors() {
+					t.Fatal("expected error but got none")
+				}
+				if tc.errContains != "" {
+					found := false
+					for _, d := range diags {
+						if contains(d.Summary, tc.errContains) || contains(d.Detail, tc.errContains) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("expected error containing %q, got: %v", tc.errContains, diags)
+					}
+				}
+				return
+			}
+
+			if diags.HasErrors() {
+				t.Fatalf("unexpected errors: %v", diags)
+			}
+
+			if len(mod.ManagedResources) != tc.wantResources {
+				t.Errorf("expected %d resources, got %d", tc.wantResources, len(mod.ManagedResources))
+			}
+		})
+	}
+}
+
+func TestYAMLMultiDocPositionAccuracy(t *testing.T) {
+	// Test that error positions correctly reference lines in multi-doc files
+	src := `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+resource:
+  aws_instance:
+    web:
+      ami: ami-67890
+`
+	parser := testParser(map[string]string{
+		"main.tf.yaml": src,
+	})
+
+	_, diags := parser.LoadConfigDir(".", StaticModuleCall{})
+	if !diags.HasErrors() {
+		t.Fatal("expected duplicate resource error")
+	}
+
+	// The error should reference a valid line number
+	for _, d := range diags {
+		if d.Subject != nil && d.Subject.Start.Line > 0 {
+			t.Logf("Error at line %d: %s", d.Subject.Start.Line, d.Summary)
+			// The second "web" resource starts at line 8
+			// Error positions should be >= 1
+			if d.Subject.Start.Line < 1 {
+				t.Errorf("invalid line number: %d", d.Subject.Start.Line)
+			}
+		}
+	}
+}
+
+func TestYAMLMultiDocErrorLineNumberAccuracy(t *testing.T) {
+	// Test that errors in the second document report correct line numbers
+	// This is critical for tofu validate to show accurate error locations
+	tests := []struct {
+		name         string
+		src          string
+		wantLine     int // Expected line number in error
+		errContains  string
+	}{
+		{
+			name: "variable error in second document",
+			// Line 1: ---
+			// Line 2: resource:
+			// Line 3:   aws_instance:
+			// Line 4:     web:
+			// Line 5:       ami: ami-12345
+			// Line 6: ---
+			// Line 7: variable:
+			// Line 8:   region:
+			// Line 9:     default: us-east-1  <-- error points to content (line 9)
+			src: `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+variable:
+  region:
+    default: us-east-1
+`,
+			wantLine:    9, // Points to the variable content
+			errContains: "Variables not supported in YAML",
+		},
+		{
+			name: "locals error in third document",
+			// Line 1: ---
+			// Line 2: resource:
+			// Line 3:   aws_instance:
+			// Line 4:     one:
+			// Line 5:       ami: ami-1
+			// Line 6: ---
+			// Line 7: resource:
+			// Line 8:   aws_instance:
+			// Line 9:     two:
+			// Line 10:      ami: ami-2
+			// Line 11: ---
+			// Line 12: locals:
+			// Line 13:   foo: bar  <-- error points to content (line 13)
+			src: `---
+resource:
+  aws_instance:
+    one:
+      ami: ami-1
+---
+resource:
+  aws_instance:
+    two:
+      ami: ami-2
+---
+locals:
+  foo: bar
+`,
+			wantLine:    13, // Points to the locals content
+			errContains: "Locals not supported in YAML",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			parser := testParser(map[string]string{
+				"main.tf.yaml": tc.src,
+			})
+
+			_, diags := parser.LoadConfigDir(".", StaticModuleCall{})
+			if !diags.HasErrors() {
+				t.Fatal("expected error but got none")
+			}
+
+			// Find the expected error and verify its line number
+			found := false
+			for _, d := range diags {
+				if contains(d.Summary, tc.errContains) {
+					found = true
+					if d.Subject == nil {
+						t.Errorf("error has no Subject range")
+						continue
+					}
+					if d.Subject.Start.Line != tc.wantLine {
+						t.Errorf("error line number: got %d, want %d", d.Subject.Start.Line, tc.wantLine)
+					} else {
+						t.Logf("Correctly reported error at line %d: %s", d.Subject.Start.Line, d.Summary)
+					}
+					break
+				}
+			}
+			if !found {
+				t.Errorf("expected error containing %q, got: %v", tc.errContains, diags)
+			}
+		})
+	}
+}
+
+func TestYAMLMultiDocWithOutput(t *testing.T) {
+	// Test mixing resources and outputs across documents
+	src := `---
+resource:
+  aws_instance:
+    web:
+      ami: ami-12345
+---
+output:
+  instance_id:
+    value: "test"
+`
+	parser := testParser(map[string]string{
+		"main.tf.yaml": src,
+	})
+
+	mod, diags := parser.LoadConfigDir(".", StaticModuleCall{})
+	if diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", diags)
+	}
+
+	if len(mod.ManagedResources) != 1 {
+		t.Errorf("expected 1 resource, got %d", len(mod.ManagedResources))
+	}
+	if len(mod.Outputs) != 1 {
+		t.Errorf("expected 1 output, got %d", len(mod.Outputs))
+	}
+}
+
+func TestYAMLMultiDocEmpty(t *testing.T) {
+	// Test file with only empty documents
+	src := `---
+---
+---
+`
+	parser := testParser(map[string]string{
+		"main.tf.yaml": src,
+	})
+
+	mod, diags := parser.LoadConfigDir(".", StaticModuleCall{})
+	if diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", diags)
+	}
+
+	// Should produce an empty module
+	if len(mod.ManagedResources) != 0 {
+		t.Errorf("expected 0 resources, got %d", len(mod.ManagedResources))
+	}
+}
+
+// contains checks if s contains substr (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

@@ -130,16 +130,29 @@ func (p *Parser) loadFiles(paths []string, override bool) ([]*File, hcl.Diagnost
 	var diags hcl.Diagnostics
 
 	for _, path := range paths {
-		var f *File
 		var fDiags hcl.Diagnostics
-		if override {
-			f, fDiags = p.LoadConfigFileOverride(path)
+
+		// YAML files may contain multiple documents, so handle them specially
+		if isYAMLFile(path) {
+			var yamlFiles []*File
+			if override {
+				yamlFiles, fDiags = p.loadYAMLConfigFilesOverride(path)
+			} else {
+				yamlFiles, fDiags = p.loadYAMLConfigFiles(path)
+			}
+			diags = append(diags, fDiags...)
+			files = append(files, yamlFiles...)
 		} else {
-			f, fDiags = p.LoadConfigFile(path)
-		}
-		diags = append(diags, fDiags...)
-		if f != nil {
-			files = append(files, f)
+			var f *File
+			if override {
+				f, fDiags = p.LoadConfigFileOverride(path)
+			} else {
+				f, fDiags = p.LoadConfigFile(path)
+			}
+			diags = append(diags, fDiags...)
+			if f != nil {
+				files = append(files, f)
+			}
 		}
 	}
 

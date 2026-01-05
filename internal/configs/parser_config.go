@@ -57,6 +57,47 @@ func (p *Parser) loadConfigFile(path string, override bool) (*File, hcl.Diagnost
 		return nil, diags
 	}
 
+	file, fileDiags := p.decodeConfigFileBody(body, override)
+	diags = append(diags, fileDiags...)
+	return file, diags
+}
+
+// loadYAMLConfigFiles reads a YAML file and returns all documents as config Files.
+// Multi-document YAML files (separated by ---) produce multiple Files.
+func (p *Parser) loadYAMLConfigFiles(path string) ([]*File, hcl.Diagnostics) {
+	return p.loadYAMLConfigFilesInternal(path, false)
+}
+
+// loadYAMLConfigFilesOverride is like loadYAMLConfigFiles but processes
+// each document as an override file.
+func (p *Parser) loadYAMLConfigFilesOverride(path string) ([]*File, hcl.Diagnostics) {
+	return p.loadYAMLConfigFilesInternal(path, true)
+}
+
+func (p *Parser) loadYAMLConfigFilesInternal(path string, override bool) ([]*File, hcl.Diagnostics) {
+	hclFiles, diags := p.loadYAMLMultiDoc(path)
+	if len(hclFiles) == 0 {
+		return nil, diags
+	}
+
+	var files []*File
+	for _, hclFile := range hclFiles {
+		if hclFile == nil || hclFile.Body == nil {
+			continue
+		}
+		file, fileDiags := p.decodeConfigFileBody(hclFile.Body, override)
+		diags = append(diags, fileDiags...)
+		if file != nil {
+			files = append(files, file)
+		}
+	}
+
+	return files, diags
+}
+
+// decodeConfigFileBody decodes an HCL body into a config File.
+func (p *Parser) decodeConfigFileBody(body hcl.Body, override bool) (*File, hcl.Diagnostics) {
+	var diags hcl.Diagnostics
 	file := &File{}
 
 	var reqDiags hcl.Diagnostics
